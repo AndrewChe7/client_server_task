@@ -63,3 +63,11 @@ void DataBase::logout(sole::uuid uuid) {
         uuidsData.erase(it);
     }
 }
+
+std::string DataBase::getLogin(sole::uuid uuid) {
+    if (isUuidValid(uuid))
+    {
+        return uuidsData[uuid];
+    }
+    return "";
+}

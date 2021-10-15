@@ -13,6 +13,7 @@
 
 #include "ThirdParty/picojson.h"
 #include "DataBase.h"
+#include "MessageQueue.h"
 
 struct client_connection {
     int socket;
@@ -23,6 +24,7 @@ struct client_connection {
 std::list<std::thread> threads;
 std::list<struct client_connection> connections;
 DataBase db;
+MessageQueue messageQueue;
 std::mutex connections_mutex;
 std::mutex error_mutex;
 bool stop = false;
@@ -128,6 +130,29 @@ void handleMessage(const std::string& message, const struct client_connection& c
             answerObj.insert(std::pair<std::string, picojson::value> ("message",
                                                                       picojson::value("Wrong uuid")));
         }
+    } else if (command == "message")
+    {
+        auto body = obj["body"].to_str();
+        auto uuidStr = obj["session"].to_str();
+        auto uid = sole::rebuild(uuidStr);
+        if (db.isUuidValid(uid)) {
+            answerObj.insert(std::pair<std::string, picojson::value> ("id",
+                                                                      picojson::value(obj["id"].to_str())));
+            answerObj.insert(std::pair<std::string, picojson::value> ("command",
+                                                                      picojson::value("message")));
+            answerObj.insert(std::pair<std::string, picojson::value> ("status",
+                                                                      picojson::value("ok")));
+            messageQueue.send_message(uid, obj["body"].to_str());
+        } else {
+            answerObj.insert(std::pair<std::string, picojson::value> ("id",
+                                                                      picojson::value(obj["id"].to_str())));
+            answerObj.insert(std::pair<std::string, picojson::value> ("command",
+                                                                      picojson::value("message")));
+            answerObj.insert(std::pair<std::string, picojson::value> ("status",
+                                                                      picojson::value("failed")));
+            answerObj.insert(std::pair<std::string, picojson::value> ("message",
+                                                                      picojson::value("Wrong uuid")));
+        }
     }
 
     picojson::value answerValue(answerObj);
@@ -161,6 +186,23 @@ void handleServerCommands()
         std::cin >> s;
         if (s == "stop")
             stop = true;
+    }
+}
+
+void handleMessagesFromQueue()
+{
+    while (!stop)
+    {
+        if (!messageQueue.isEmpty()) {
+            Message message = messageQueue.get_last();
+            std::string answer = R"({"command":"message","sender_login":")" +
+                    db.getLogin(message.sender) + R"(","body":")" + message.body + "\"}";
+            std::lock_guard<std::mutex> lock(connections_mutex);
+            for (auto& i: connections)
+            {
+                send(i.socket, answer.c_str(), answer.length(), 0);
+            }
+        }
     }
 }
 
@@ -198,6 +240,7 @@ int main() {
     }
 
     std::thread serverCommandsThread(handleServerCommands);
+    std::thread messageQueueThread(handleMessagesFromQueue);
 
     while (!stop)
     {
@@ -218,6 +261,7 @@ int main() {
         threads.emplace_back(handleClient, new_connection);
     }
 
+    messageQueueThread.join();
     serverCommandsThread.join();
     for(auto& t: threads)
     {

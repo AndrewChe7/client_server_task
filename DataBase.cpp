@@ -48,3 +48,18 @@ bool DataBase::isPasswordValid(const std::string& login, const std::string& pass
     }
     return true;
 }
+
+bool DataBase::isUuidValid(sole::uuid uuid) {
+    std::lock_guard<std::mutex> lock(uuidsDataMutex);
+    if (uuidsData.find(uuid) != uuidsData.end())
+        return true;
+    return false;
+}
+
+void DataBase::logout(sole::uuid uuid) {
+    std::lock_guard<std::mutex> lock(uuidsDataMutex);
+    auto it = uuidsData.find(uuid);
+    if (it != uuidsData.end()) {
+        uuidsData.erase(it);
+    }
+}

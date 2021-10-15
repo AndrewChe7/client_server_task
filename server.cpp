@@ -102,7 +102,32 @@ void handleMessage(const std::string& message, const struct client_connection& c
         }
     } else if (command == "logout")
     {
-        
+        auto uuidStr = obj["session"].to_str();
+        auto uid = sole::rebuild(uuidStr);
+        if (db.isUuidValid(uid))
+        {
+            answerObj.insert(std::pair<std::string, picojson::value> ("id",
+                                                                      picojson::value(obj["id"].to_str())));
+            answerObj.insert(std::pair<std::string, picojson::value> ("command",
+                                                                      picojson::value("logout")));
+            answerObj.insert(std::pair<std::string, picojson::value> ("status",
+                                                                      picojson::value("ok")));
+            picojson::value answerValue(answerObj);
+            auto answer = answerValue.serialize();
+            send(connection.socket, answer.c_str(), answer.length(), 0);
+            db.logout(uid);
+            close(connection.socket);
+            return;
+        } else {
+            answerObj.insert(std::pair<std::string, picojson::value> ("id",
+                                                                      picojson::value(obj["id"].to_str())));
+            answerObj.insert(std::pair<std::string, picojson::value> ("command",
+                                                                      picojson::value("logout")));
+            answerObj.insert(std::pair<std::string, picojson::value> ("status",
+                                                                      picojson::value("failed")));
+            answerObj.insert(std::pair<std::string, picojson::value> ("message",
+                                                                      picojson::value("Wrong uuid")));
+        }
     }
 
     picojson::value answerValue(answerObj);

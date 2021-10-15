@@ -18,7 +18,9 @@ public:
     DataBase();
     bool isLoginValid(const std::string& login);
     bool isPasswordValid(const std::string& login, const std::string& pass);
+    bool isUuidValid(sole::uuid uuid);
     sole::uuid login(const std::string& login);
+    void logout(sole::uuid uuid);
 };
 
 

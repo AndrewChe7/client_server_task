@@ -136,12 +136,6 @@ void handleMessage(const std::string& message, const struct client_connection& c
         auto uuidStr = obj["session"].to_str();
         auto uid = sole::rebuild(uuidStr);
         if (db.isUuidValid(uid)) {
-            answerObj.insert(std::pair<std::string, picojson::value> ("id",
-                                                                      picojson::value(obj["id"].to_str())));
-            answerObj.insert(std::pair<std::string, picojson::value> ("command",
-                                                                      picojson::value("message")));
-            answerObj.insert(std::pair<std::string, picojson::value> ("status",
-                                                                      picojson::value("ok")));
             messageQueue.send_message(uid, obj["body"].to_str());
         } else {
             answerObj.insert(std::pair<std::string, picojson::value> ("id",

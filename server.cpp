@@ -166,26 +166,37 @@ void handleClient(struct client_connection connection)
     size_t count = 0;
     while (!stop)
     {
-        count = read(connection.socket, buf, 1024);
-        if (count == 0)
-        {
-            break;
+        fd_set set;
+        struct timeval timeout;
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+        FD_ZERO(&set);
+        FD_SET(connection.socket, &set);
+        count = select(connection.socket + 1, &set, nullptr, nullptr, &timeout);
+        if (count > 0) {
+            count = read(connection.socket, buf, 1024);
+            if (count == 0)
+            {
+                break;
+            }
+            buf[count] = '\0';
+            std::string input(buf);
+            handleMessage(input, connection);
         }
-        buf[count] = '\0';
-        std::string input(buf);
-        handleMessage(input, connection);
     }
     close(connection.socket);
 }
 
-void handleServerCommands()
+void handleServerCommands(int server_socket)
 {
     while (!stop)
     {
         std::string s;
         std::cin >> s;
-        if (s == "stop")
+        if (s == "stop"){
             stop = true;
+            close(server_socket);
+        }
     }
 }
 
@@ -239,35 +250,45 @@ int main() {
         return -3;
     }
 
-    std::thread serverCommandsThread(handleServerCommands);
+    std::thread serverCommandsThread(handleServerCommands, server_socket);
     std::thread messageQueueThread(handleMessagesFromQueue);
 
     while (!stop)
     {
         struct client_connection new_connection{};
         new_connection.address_len = sizeof(new_connection.address);
-        new_connection.socket = accept(server_socket,
-                                       (struct sockaddr*) &new_connection.address,
-                                       &new_connection.address_len);
-        if (new_connection.socket == -1 || stop)
+        fd_set set;
+        struct timeval timeout;
+        timeout.tv_sec = 3;
+        timeout.tv_usec = 0;
+        FD_ZERO(&set);
+        FD_SET(server_socket, &set);
+        res = select(server_socket + 1, &set, nullptr, nullptr, &timeout);
+        if (res > 0)
         {
-            printError("Failed to accept.");
-            continue;
+            new_connection.socket = accept(server_socket,
+                                           (struct sockaddr*) &new_connection.address,
+                                           &new_connection.address_len);
+            if (new_connection.socket == -1 || stop)
+            {
+                printError("Failed to accept.");
+                continue;
+            }
+            {
+                std::lock_guard<std::mutex> lock(connections_mutex);
+                connections.push_back(new_connection);
+            }
+            threads.emplace_back(handleClient, new_connection);
         }
-        {
-            std::lock_guard<std::mutex> lock(connections_mutex);
-            connections.push_back(new_connection);
-        }
-        threads.emplace_back(handleClient, new_connection);
     }
-
+    printError("stopped");
     messageQueueThread.join();
     serverCommandsThread.join();
     for(auto& t: threads)
     {
         t.join();
     }
-
-    close(server_socket);
+    if (server_socket)
+        close(server_socket);
     return 0;
 }
